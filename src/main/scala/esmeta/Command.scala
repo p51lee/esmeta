@@ -89,3 +89,8 @@ case object CmdInject extends Command("inject", CmdBuildCFG >> Inject) {
 case object CmdWeb extends Command("web", CmdBuildCFG >> Web) {
   def help = "starts a web server for interactive execution."
 }
+
+/** `mutate` command */
+case object CmdMutate extends Command("mutate", CmdBuildCFG >> Mutate) {
+  def help = "mutates javascript programs to increase the semantics coverage"
+}
