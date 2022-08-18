@@ -92,5 +92,5 @@ case object CmdWeb extends Command("web", CmdBuildCFG >> Web) {
 
 /** `mutate` command */
 case object CmdMutate extends Command("mutate", CmdBuildCFG >> Mutate) {
-  def help = "mutates javascript programs to increase the semantics coverage"
+  def help = "mutates a JavaScript program."
 }
