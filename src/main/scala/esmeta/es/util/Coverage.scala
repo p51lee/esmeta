@@ -123,7 +123,6 @@ case class Coverage(
 
     var covered = false
     var updated = false
-    var blockingScripts: Set[Script] = Set.empty
 
     var touchedNodeViews: Map[NodeView, Option[Nearest]] = Map()
     var touchedCondViews: Map[CondView, Option[Nearest]] = Map()
@@ -136,8 +135,7 @@ case class Coverage(
         case Some(originalScript) if originalScript.code.length > code.length =>
           update(nodeView, script)
           updated = true
-          blockingScripts += originalScript
-        case Some(blockScript) => blockingScripts += blockScript
+        case _ => ()
 
     // update branch coverage
     for ((condView, nearest) <- interp.touchedCondViews)
@@ -148,8 +146,7 @@ case class Coverage(
         case Some(origScript) if origScript.code.length > code.length =>
           update(condView, nearest, script)
           updated = true
-          blockingScripts += origScript
-        case Some(blockScript) => blockingScripts += blockScript
+        case _ => ()
 
     if (updated)
       val codeWithUseStrict = USE_STRICT + code
