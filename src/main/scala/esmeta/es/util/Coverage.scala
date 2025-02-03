@@ -134,25 +134,27 @@ case class Coverage(
 
     val nodeStackViewGroups = interp.touchedNodeStackViews
       .flatMap(_._1.view)
-      .groupBy(_._2)
-      .values
+      .groupBy(_._2.map(_.func.name))
+      .view
+      .mapValues(_.map(_._1).toSet)
+      .toMap
 
     val condStackViewGroups = interp.touchedCondStackViews
       .flatMap(_._1.view)
-      .groupBy(_._2)
-      .values
+      .groupBy(_._2.map(_.func.name))
+      .view
+      .mapValues(_.map(_._1).toSet)
+      .toMap
 
     def getView(
-      groups: Iterable[Iterable[(Feature, List[Feature], Option[CallPath])]],
+      groups: Map[List[String], Set[Feature]],
       stackView: StackView,
     ): View =
-      stackView.map {
+      stackView.flatMap {
         case (feature, enclosing, path) =>
-          groups.find(_.exists(_ == (feature, enclosing, path))) match
-            case Some(group) =>
-              val features = group.map(_._1).toSet
-              (features, path)
-            case None => throw new Exception("Unreachable")
+          groups.get(enclosing.map(_.func.name)) match
+            case Some(set) => Some(set, path)
+            case None      => None
       }
 
     // update node coverage
