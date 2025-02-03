@@ -34,12 +34,11 @@ class JsonProtocol(cfg: CFG) extends StateJsonProtocol(cfg) {
   given viewEncoder: Encoder[View] =
     Encoder.instance {
       case None => Json.Null
-      case Some((enclosing, feature, path)) =>
+      case Some((featureStack, path)) =>
         Json.obj(
-          "enclosing" -> Json.fromValues(
-            enclosing.map(f => f.func.name.asJson),
+          "featstack" -> Json.fromValues(
+            featureStack.map(f => f.func.name.asJson),
           ),
-          "feature" -> feature.func.name.asJson,
           "path" -> path.map(_.toString).asJson,
         )
     }

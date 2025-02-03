@@ -48,10 +48,12 @@ case class Coverage(
   private var condViewMap: Map[Cond, Map[View, Script]] = Map()
   private var condViews: Set[CondView] = Set()
 
-  def apply(node: Node): Map[View, Script] = nodeViewMap.getOrElse(node, Map())
+  def apply(node: Node): Map[View, Script] =
+    nodeViewMap.getOrElse(node, Map())
   def getScript(nv: NodeView): Option[Script] = apply(nv.node).get(nv.view)
 
-  def apply(cond: Cond): Map[View, Script] = condViewMap.getOrElse(cond, Map())
+  def apply(cond: Cond): Map[View, Script] =
+    condViewMap.getOrElse(cond, Map())
   def getScript(cv: CondView): Option[Script] = apply(cv.cond).get(cv.view)
 
   // script reference counter
@@ -59,8 +61,10 @@ case class Coverage(
   def size: Int = counter.size
 
   // target conditional branches
-  private var _targetCondViews: Map[Cond, Map[View, Option[Nearest]]] = Map()
-  def targetCondViews: Map[Cond, Map[View, Option[Nearest]]] = _targetCondViews
+  private var _targetCondViews: Map[Cond, Map[View, Option[Nearest]]] =
+    Map()
+  def targetCondViews: Map[Cond, Map[View, Option[Nearest]]] =
+    _targetCondViews
 
   def swcMinifiableRate = _minimalInfo.values.count(
     _.swcMinifiable.getOrElse(false),
@@ -97,22 +101,23 @@ case class Coverage(
   def runAndCheckWithBlocking(
     script: Script,
     modify: Boolean = true,
-  ): (State, Boolean, Boolean, Set[Script], Set[NodeView], Set[CondView]) = {
-    val interp = run(script.code)
-    this.synchronized(checkWithBlocking(script, interp, modify))
-  }
+  ): (State, Boolean, Boolean, Set[Script], Set[NodeView], Set[CondView]) = ???
+  //   {
+  //   val interp = run(script.code)
+  //   this.synchronized(checkWithBlocking(script, interp, modify))
+  // }
 
   /** evaluate a given ECMAScript program */
   def run(code: String): Interp = {
     val initSt = cfg.init.from(code)
-    val interp = Interp(initSt, kFs, cp, timeLimit)
+    val interp = Interp(initSt, cp, timeLimit)
     interp.result; interp
   }
 
   /** evaluate a given ECMAScript AST */
   def run(ast: Ast): Interp = {
     val initSt = cfg.init.from(ast)
-    val interp = Interp(initSt, kFs, cp, timeLimit)
+    val interp = Interp(initSt, cp, timeLimit)
     interp.result; interp
   }
 
@@ -127,8 +132,35 @@ case class Coverage(
     var touchedNodeViews: Map[NodeView, Option[Nearest]] = Map()
     var touchedCondViews: Map[CondView, Option[Nearest]] = Map()
 
+    val nodeStackViewGroups = interp.touchedNodeStackViews
+      .flatMap(_._1.view)
+      .groupBy(_._2)
+      .values
+
+    val condStackViewGroups = interp.touchedCondStackViews
+      .flatMap(_._1.view)
+      .groupBy(_._2)
+      .values
+
+    def getView(
+      groups: Iterable[Iterable[(Feature, List[Feature], Option[CallPath])]],
+      stackView: StackView,
+    ): View =
+      stackView.map {
+        case (feature, enclosing, path) =>
+          groups.find(_.exists(_ == (feature, enclosing, path))) match
+            case Some(group) =>
+              val features = group.map(_._1).toSet
+              (features, path)
+            case None => throw new Exception("Unreachable")
+      }
+
     // update node coverage
-    for ((nodeView, nearest) <- interp.touchedNodeViews)
+    for ((nodeStackView, nearest) <- interp.touchedNodeStackViews)
+      val nodeView = NodeView(
+        nodeStackView.node,
+        getView(nodeStackViewGroups, nodeStackView.view),
+      )
       touchedNodeViews += nodeView -> nearest
       getScript(nodeView) match
         case None => update(nodeView, script); updated = true; covered = true
@@ -138,7 +170,11 @@ case class Coverage(
         case _ => ()
 
     // update branch coverage
-    for ((condView, nearest) <- interp.touchedCondViews)
+    for ((condStackView, nearest) <- interp.touchedCondStackViews)
+      val condView = CondView(
+        condStackView.cond,
+        getView(condStackViewGroups, condStackView.view),
+      )
       touchedCondViews += condView -> nearest
       getScript(condView) match
         case None =>
@@ -171,68 +207,6 @@ case class Coverage(
 
     // TODO: impl checkWithBlocking using `blockingScripts`
     (finalSt, updated, covered)
-
-  def checkWithBlocking(
-    script: Script,
-    interp: Interp,
-    modify: Boolean,
-  ): (State, Boolean, Boolean, Set[Script], Set[NodeView], Set[CondView]) =
-    val Script(code, _, _, _) = script
-    val initSt = cfg.init.from(code)
-    val finalSt = interp.result
-
-    var covered = false
-    var updated = false
-    var blockingScripts: Set[Script] = Set.empty
-    var coveredNodeViews = Set.empty[NodeView]
-    var coveredCondViews = Set.empty[CondView]
-
-    var touchedNodeViews: Map[NodeView, Option[Nearest]] = Map()
-    var touchedCondViews: Map[CondView, Option[Nearest]] = Map()
-
-    // update node coverage
-    for ((nodeView, nearest) <- interp.touchedNodeViews)
-      touchedNodeViews += nodeView -> nearest
-      getScript(nodeView) match
-        case None =>
-          if modify then
-            update(nodeView, script); coveredNodeViews += nodeView;
-          updated = true; covered = true
-        case Some(originalScript) if originalScript.code.length > code.length =>
-          if modify then update(nodeView, script)
-          updated = true
-          blockingScripts += originalScript
-        case Some(blockScript) => blockingScripts += blockScript
-
-    // update branch coverage
-    for ((condView, nearest) <- interp.touchedCondViews)
-      touchedCondViews += condView -> nearest
-      getScript(condView) match
-        case None =>
-          if modify then
-            update(condView, nearest, script); coveredCondViews += condView;
-          updated = true; covered = true
-        case Some(origScript) if origScript.code.length > code.length =>
-          if modify then update(condView, nearest, script)
-          updated = true
-          blockingScripts += origScript
-        case Some(blockScript) => blockingScripts += blockScript
-
-    if (updated)
-      _minimalInfo += script.name -> ScriptInfo(
-        ConformTest.createTest(cfg, finalSt),
-        touchedNodeViews.keys,
-        touchedCondViews.keys,
-      )
-
-    (
-      finalSt,
-      updated,
-      covered,
-      blockingScripts,
-      coveredNodeViews,
-      coveredCondViews,
-    )
 
   /** get node coverage */
   def nodeCov: Int = nodeViewMap.size
@@ -455,24 +429,29 @@ case class Coverage(
 object Coverage {
   class Interp(
     initSt: State,
-    kFs: Int,
     cp: Boolean,
     timeLimit: Option[Int],
   ) extends Interpreter(initSt, timeLimit = timeLimit, keepProvenance = true) {
-    var touchedNodeViews: Map[NodeView, Option[Nearest]] = Map()
-    var touchedCondViews: Map[CondView, Option[Nearest]] = Map()
+    var touchedNodeStackViews: Map[NodeStackView, Option[Nearest]] = Map()
+    var touchedCondStackViews: Map[CondStackView, Option[Nearest]] = Map()
 
     // override eval for node
     override def eval(node: Node): Unit =
       // record touched nodes
-      touchedNodeViews += NodeView(node, getView(node)) -> getNearest
+      touchedNodeStackViews += NodeStackView(
+        node,
+        getStackView(node),
+      ) -> getNearest
       super.eval(node)
 
     // override branch move
     override def moveBranch(branch: Branch, b: Boolean): Unit =
       // record touched conditional branch
       val cond = Cond(branch, b)
-      touchedCondViews += CondView(cond, getView(cond)) -> getNearest
+      touchedCondStackViews += CondStackView(
+        cond,
+        getStackView(cond),
+      ) -> getNearest
       super.moveBranch(branch, b)
 
     // override helper for return-if-abrupt cases
@@ -484,16 +463,19 @@ object Coverage {
       val abrupt = value.isAbruptCompletion
       val cond = Cond(riaExpr.idRef, abrupt)
 
-      touchedCondViews += CondView(cond, getView(cond)) -> getNearest
+      touchedCondStackViews += CondStackView(
+        cond,
+        getStackView(cond),
+      ) -> getNearest
       super.returnIfAbrupt(riaExpr, value, check)
 
     // get syntax-sensitive views
-    private def getView(node: Node | Cond): View =
-      val stack = st.context.featureStack.take(kFs)
+    private def getStackView(node: Node | Cond): StackView =
+      val stack = st.context.featureStack
       val path = if (cp) then Some(st.context.callPath) else None
       stack match {
         case Nil                  => None
-        case feature :: enclosing => Some(enclosing, feature, path)
+        case feature :: enclosing => Some(feature, enclosing, path)
       }
 
     // get location information
@@ -512,10 +494,11 @@ object Coverage {
   )
 
   /** syntax-sensitive view */
-  type View = Option[(List[Feature], Feature, Option[CallPath])]
+  type View = Option[(Set[Feature], Option[CallPath])]
+
   private def stringOfView(view: View) = view.fold("") {
-    case (enclosing, feature, path) =>
-      s"@ $feature${enclosing.mkString("[", ", ", "]")}:${path.getOrElse("")}"
+    case (features, path) =>
+      s"@ ${features.mkString("{", ", ", "}")}:${path.getOrElse("")}"
   }
   sealed trait NodeOrCondView(view: View) {}
   case class NodeView(node: Node, view: View) extends NodeOrCondView(view) {
@@ -529,6 +512,21 @@ object Coverage {
 
   case class FuncView(func: Func, view: View) {
     override def toString: String = func.name + stringOfView(view)
+  }
+
+  type StackView = Option[(Feature, List[Feature], Option[CallPath])]
+
+  private def stringOfStackView(view: StackView) = view.fold("") {
+    case (feature, enclosing, path) =>
+      s"@ ${(feature :: enclosing).mkString("[", ", ", "]")}:${path.getOrElse("")}"
+  }
+
+  case class NodeStackView(node: Node, view: StackView) {
+    override def toString: String = node.simpleString + stringOfStackView(view)
+  }
+
+  case class CondStackView(cond: Cond, view: StackView) {
+    override def toString: String = cond.toString + stringOfStackView(view)
   }
 
   // branch or reference to EReturnIfAbrupt with boolean values
@@ -571,6 +569,7 @@ object Coverage {
   given Ordering[Feature] = Ordering.by(_.toString)
   given Ordering[CallPath] = Ordering.by(_.toString)
   given Ordering[Node] = Ordering.by(_.id)
+  given Ordering[Set[Feature]] = Ordering.by(_.toList)
   given Ordering[NodeView] = Ordering.by(v => (v.node, v.view))
   given Ordering[Cond] = Ordering.by(cond => (cond.kindString, cond.id))
   given Ordering[CondView] = Ordering.by(v => (v.cond, v.view))
