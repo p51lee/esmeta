@@ -12,6 +12,10 @@ import esmeta.util.SystemUtils.*
 case object Fuzz extends Phase[CFG, Coverage] {
   val name = "fuzz"
   val help = "generates JavaScript programs via fuzzing."
+
+  // for TOSEM revision: add global cycle removal option
+  var cycleRemoval: Boolean = true
+
   def apply(
     cfg: CFG,
     cmdConfig: CommandConfig,
@@ -76,6 +80,11 @@ case object Fuzz extends Phase[CFG, Coverage] {
       BoolOption(c => c.cp = true),
       "turn on the call-path mode (default: false) (meaningful if k-fs > 0).",
     ),
+    (
+      "no-cycle-removal",
+      BoolOption(c => c.cycleRemoval = false),
+      "turn off call path cycle removal (default: true).",
+    ),
   )
   case class Config(
     var out: Option[String] = None,
@@ -87,5 +96,6 @@ case object Fuzz extends Phase[CFG, Coverage] {
     var seed: Option[Int] = None,
     var kFs: Int = 0,
     var cp: Boolean = false,
+    var cycleRemoval: Boolean = true,
   )
 }

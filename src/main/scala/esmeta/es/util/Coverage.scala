@@ -40,6 +40,20 @@ class Coverage(
   // script reference counter
   private var counter: Map[Script, Int] = Map()
 
+  // number of scripts checked (for TOSEM revision)
+  var numScriptsChecked: Long = 0
+
+  // number of scripts updated (for TOSEM revision)
+  var numScriptsUpdated: Long = 0
+
+  // time cost for each step in check (for TOSEM revision)
+  var interpTime: Long = 0L // nanoseconds
+  var updateTime: Long = 0L
+  var assertTime: Long = 0L
+  var selectTime: Long = 0L
+  var selectDelayedTime: Long = 0L
+  var featSetTime: Long = 0L
+
   // get mapping from views to scripts for nodes or conditions
   def apply(node: Node): Map[View, Script] = nodeViewMap.getOrElse(node, Map())
   def apply(cond: Cond): Map[View, Script] = condViewMap.getOrElse(cond, Map())
@@ -79,11 +93,14 @@ class Coverage(
     * increase coverage
     */
   def check(script: Script, interp: Interp): (State, Boolean, Boolean) =
+    numScriptsChecked += 1
+    val interpTimeStart = System.nanoTime()
     val Script(code, name) = script
     val initSt =
       cfg.init.from(code) // TODO: Check if recreating init state is OK
     val finalSt = interp.result
 
+    val updateTimeStart = System.nanoTime()
     // covered new elements
     var covered = false
     // updated elements
@@ -109,13 +126,21 @@ class Coverage(
 
     val codeWithUseStrict = USE_STRICT + code + LINE_SEP
 
+    val assertTimeStart = System.nanoTime()
+    interpTime += updateTimeStart - interpTimeStart
+    updateTime += assertTimeStart - updateTimeStart
+
     // update script info
     if (updated)
+      numScriptsUpdated += 1
       _minimalInfo += script.name -> ScriptInfo(
         ConformTest.createTest(initSt, finalSt),
         interp.touchedNodeViews.map(_._1),
         interp.touchedCondViews.map(_._1),
       )
+      val assertTimeEnd = System.nanoTime()
+      assertTime += assertTimeEnd - assertTimeStart
+
     // assert: _minimalScripts ~= _minimalInfo.keys
 
     (finalSt, updated, covered)

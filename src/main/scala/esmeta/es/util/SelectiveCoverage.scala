@@ -20,6 +20,7 @@ import scala.concurrent.{Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import esmeta.es.util.Coverage.*
+import cats.instances.int
 
 class SelectiveCoverage(
   timeLimit: Option[Int] = None,
@@ -42,30 +43,46 @@ class SelectiveCoverage(
     script: Script,
     interp: Coverage.Interp,
   ): (State, Boolean, Boolean) =
+    numScriptsChecked += 1
     val Script(code, name) = script
     val codeWithUseStrict = USE_STRICT + code + LINE_SEP
     val isTranspilerHitFuture = Future {
-      if fixed then None
-      else
-        selectiveConfig.targetTrans match
-          case "swc" =>
-            JSTrans.checkTranspileDiffSrvOpt(codeWithUseStrict, Some("swc"))
-          case "babel" =>
-            JSTrans.checkTranspileDiffSrvOpt(codeWithUseStrict, Some("babel"))
-          case "terser" =>
-            JSTrans.checkTranspileDiffSrvOpt(codeWithUseStrict, Some("terser"))
-          case "swcES2015" =>
-            JSTrans.checkTranspileDiffSrvOpt(
-              codeWithUseStrict,
-              Some("swcES2015"),
-            )
-          case _ => None
+      val selectTimeStart = System.nanoTime()
+
+      val isHitOpt =
+        if fixed then None
+        else
+          selectiveConfig.targetTrans match
+            case "swc" =>
+              JSTrans.checkTranspileDiffSrvOpt(codeWithUseStrict, Some("swc"))
+            case "babel" =>
+              JSTrans.checkTranspileDiffSrvOpt(codeWithUseStrict, Some("babel"))
+            case "terser" =>
+              JSTrans.checkTranspileDiffSrvOpt(
+                codeWithUseStrict,
+                Some("terser"),
+              )
+            case "swcES2015" =>
+              JSTrans.checkTranspileDiffSrvOpt(
+                codeWithUseStrict,
+                Some("swcES2015"),
+              )
+            case _ => None
+
+      val selectTimeEnd = System.nanoTime()
+
+      // NOTE: this is possible because Future is exclusive in this code
+      selectTime += selectTimeEnd - selectTimeStart
+      isHitOpt
     }
+
+    val interpTimeStart = System.nanoTime()
 
     val initSt =
       cfg.init.from(code) // TODO: Check if recreating init state is OK
     val finalSt = interp.result
 
+    val updateTimeStart = System.nanoTime()
     // covered new elements
     var covered = false
     // updated elements
@@ -117,7 +134,11 @@ class SelectiveCoverage(
           update(condView, nearest, script); updated = true
         case _ =>
 
+    val selectDelayedTimeStart = System.nanoTime()
+
     val isTranspilerHitOpt = Await.result(isTranspilerHitFuture, 10.seconds)
+
+    val featSetTimeStart = System.nanoTime()
 
     isTranspilerHitOpt match
       case Some(true) =>
@@ -126,14 +147,24 @@ class SelectiveCoverage(
         targetFeatSet.touchWithMiss(rawStacks)
       case _ => ()
 
+    val assertTimeStart = System.nanoTime()
+    interpTime += updateTimeStart - interpTimeStart
+    updateTime += selectDelayedTimeStart - updateTimeStart
+    selectDelayedTime += featSetTimeStart - selectDelayedTimeStart
+    featSetTime += assertTimeStart - featSetTimeStart
+
     // update script info
     if (updated)
+      numScriptsUpdated += 1
       _minimalInfo += script.name -> Coverage.ScriptInfo(
         ConformTest.createTest(initSt, finalSt),
         interp.touchedNodeViews.map(_._1),
         interp.touchedCondViews.map(_._1),
         transpilable = isTranspilerHitOpt,
       )
+      val assertTimeEnd = System.nanoTime()
+      assertTime += assertTimeEnd - assertTimeStart
+
     // assert: _minimalScripts ~= _minimalInfo.keys
 
     (finalSt, updated, covered)

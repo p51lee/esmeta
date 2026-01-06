@@ -97,6 +97,12 @@ class SelectiveFuzzer(
         "iter(#)",
         "time(ms)",
         "time(h:m:s)",
+        "memory-used(MB)",
+        "memory-total(MB)",
+        "memory-max(MB)",
+        "heap-used(MB)",
+        "heap-committed(MB)",
+        "heap-max(MB)",
         "program(#)",
         "minimal(#)",
         "node(#)",
@@ -113,6 +119,16 @@ class SelectiveFuzzer(
       header ++= Vector("target-conds(#)")
       if (selectiveConfig.maxSensitivity > 0)
         header ++= Vector(s"sens-target-conds(#)")
+      header ++= Vector(
+        "scripts-checked(#)",
+        "scripts-updated(#)",
+        "interp-time(ms)",
+        "update-time(ms)",
+        "assert-time(ms)",
+        "trans-time(ms)",
+        "trans-delayed-time(ms)",
+        "featset-time(ms)",
+      )
       addRow(header)
 
     override protected def logging(isEnd: Boolean): Unit =
@@ -123,19 +139,46 @@ class SelectiveFuzzer(
       val b = cov.branchCov
       val e = elapsed
       val t = Time(e).simpleString
+      val (memUsed, memTotal, memMax) = getMemoryUsage
+      val (heapUsed, heapCommitted, heapMax) = getHeapMemoryUsage
       val nv = cov.nodeViewCov
       val bv = cov.branchViewCov
       val tc = cov.targetCondViews.size
       val tcv = cov.targetCondViews.map(_._2.size).fold(0)(_ + _)
       val mr = (cov.transpilableRate * 100 * 1000).round / 1000.0
       print(mr)
-      var row = Vector(iter, e, t, visited.size, pool.size, n, b, mr)
+      var row = Vector(
+        iter,
+        e,
+        t,
+        memUsed,
+        memTotal,
+        memMax,
+        heapUsed,
+        heapCommitted,
+        heapMax,
+        visited.size,
+        pool.size,
+        n,
+        b,
+        mr,
+      )
       val targetFeatureSize = cov.targetFeatSet.targetFeatureSize
       val touchedFeatureSize = cov.targetFeatSet.touchedFeatureSize
       row ++= Vector(targetFeatureSize, touchedFeatureSize)
       if (selectiveConfig.maxSensitivity > 0) row ++= Vector(nv, bv)
       row ++= Vector(tc)
       if (selectiveConfig.maxSensitivity > 0) row ++= Vector(tcv)
+      row ++= Vector(
+        cov.numScriptsChecked,
+        cov.numScriptsUpdated,
+        cov.interpTime / 1000000.0, // convert nanoseconds to milliseconds
+        cov.updateTime / 1000000.0,
+        cov.assertTime / 1000000.0,
+        cov.selectTime / 1000000.0,
+        cov.selectDelayedTime / 1000000.0,
+        cov.featSetTime / 1000000.0,
+      )
       addRow(row)
       // dump coverage
       cov.dumpToWithDetail(logDir, withMsg = (debug == Fuzzer.ALL))

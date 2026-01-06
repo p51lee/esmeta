@@ -1,6 +1,7 @@
 package esmeta.util
 
 import java.io.{Reader, File, PrintWriter}
+import java.lang.management.ManagementFactory
 import java.nio.file.{Files, StandardCopyOption, Paths}
 import java.util.concurrent.{Executors, ExecutorService}
 import esmeta.*
@@ -297,4 +298,24 @@ object SystemUtils {
   def fixedThread(nThread: Int): (ExecutorService, ExecutionContext) =
     val service = Executors.newFixedThreadPool(nThread)
     (service, ExecutionContext.fromExecutor(service))
+
+  /** get memory usage in MB */
+  def getMemoryUsage: (Double, Double, Double) = {
+    val runtime = Runtime.getRuntime
+    val totalMemory = runtime.totalMemory() / (1024.0 * 1024.0)
+    val freeMemory = runtime.freeMemory() / (1024.0 * 1024.0)
+    val usedMemory = totalMemory - freeMemory
+    val maxMemory = runtime.maxMemory() / (1024.0 * 1024.0)
+    (usedMemory, totalMemory, maxMemory)
+  }
+
+  /** get heap memory usage in MB using MemoryMXBean */
+  def getHeapMemoryUsage: (Double, Double, Double) = {
+    val memoryMXBean = ManagementFactory.getMemoryMXBean
+    val heapMemory = memoryMXBean.getHeapMemoryUsage
+    val usedHeap = heapMemory.getUsed / (1024.0 * 1024.0)
+    val committedHeap = heapMemory.getCommitted / (1024.0 * 1024.0)
+    val maxHeap = heapMemory.getMax / (1024.0 * 1024.0)
+    (usedHeap, committedHeap, maxHeap)
+  }
 }
