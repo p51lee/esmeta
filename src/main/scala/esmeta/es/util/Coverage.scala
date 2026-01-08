@@ -76,7 +76,8 @@ class Coverage(
     * evaluation result with whether it succeeds to increase coverage
     */
   def runAndCheck(script: Script): (State, Boolean, Boolean) = {
-    val interp = run(script.code)
+    val initSt = cfg.init.from(script.code)
+    val interp = Interp(initSt, timeLimit, kFs, cp)
     check(script, interp)
   }
 

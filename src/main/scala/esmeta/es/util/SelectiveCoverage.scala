@@ -47,7 +47,7 @@ class SelectiveCoverage(
     val Script(code, name) = script
     val codeWithUseStrict = USE_STRICT + code + LINE_SEP
     val isTranspilerHitFuture = Future {
-      val selectTimeStart = System.nanoTime()
+      val transTimeStart = System.nanoTime()
 
       val isHitOpt =
         if fixed then None
@@ -69,10 +69,10 @@ class SelectiveCoverage(
               )
             case _ => None
 
-      val selectTimeEnd = System.nanoTime()
+      val transTimeEnd = System.nanoTime()
 
       // NOTE: this is possible because Future is exclusive in this code
-      selectTime += selectTimeEnd - selectTimeStart
+      selectTime += transTimeEnd - transTimeStart
       isHitOpt
     }
 
@@ -134,7 +134,7 @@ class SelectiveCoverage(
           update(condView, nearest, script); updated = true
         case _ =>
 
-    val selectDelayedTimeStart = System.nanoTime()
+    val transDelayedTimeStart = System.nanoTime()
 
     val isTranspilerHitOpt = Await.result(isTranspilerHitFuture, 10.seconds)
 
@@ -149,8 +149,8 @@ class SelectiveCoverage(
 
     val assertTimeStart = System.nanoTime()
     interpTime += updateTimeStart - interpTimeStart
-    updateTime += selectDelayedTimeStart - updateTimeStart
-    selectDelayedTime += featSetTimeStart - selectDelayedTimeStart
+    updateTime += transDelayedTimeStart - updateTimeStart
+    selectDelayedTime += featSetTimeStart - transDelayedTimeStart
     featSetTime += assertTimeStart - featSetTimeStart
 
     // update script info
