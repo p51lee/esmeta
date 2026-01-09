@@ -76,17 +76,19 @@ class Coverage(
     * evaluation result with whether it succeeds to increase coverage
     */
   def runAndCheck(script: Script): (State, Boolean, Boolean) = {
-    val initSt = cfg.init.from(script.code)
-    val interp = Interp(initSt, timeLimit, kFs, cp)
+    val interp = run(script.code)
     check(script, interp)
   }
 
   /** evaluate a given ECMAScript program. */
   def run(code: String): Interp = {
     // run interpreter and record touched
+    val interpTimeStart = System.nanoTime()
     val initSt = cfg.init.from(code)
     val interp = Interp(initSt, timeLimit, kFs, cp)
     interp.result
+    val interpTimeEnd = System.nanoTime()
+    interpTime += interpTimeEnd - interpTimeStart
     interp
   }
 

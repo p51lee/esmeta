@@ -160,7 +160,7 @@ class Fuzzer(
       else if (!ValidityChecker(mutatedCode))
         MutantInfo(invalid = true)
       else
-        MutantInfo(interp = optional(cov.run(mutatedCode)))
+        MutantInfo(interp = None) // avoid double interpretation
     }
     (mutatorName, mutatedCode, info)
 
@@ -186,7 +186,7 @@ class Fuzzer(
       fail("INVALID PROGRAM")
     val script = toScript(code)
     val (_, updated, covered) =
-      cov.check(script, info.interp.getOrElse(fail("Interp Fail")))
+      optional(cov.runAndCheck(script)).getOrElse(fail("Interp Fail"))
     if (!updated) fail("NO UPDATE")
     covered
   })
